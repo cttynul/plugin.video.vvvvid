@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import re
 import urllib, urllib2
 import re, string
@@ -5,19 +6,16 @@ import threading
 import os
 import base64
 import sys
-#from t0mm0.common.addon import Addon
-#from t0mm0.common.net import Net
 import urlparse
 import json
 from requester import  *
 from xbmcswift2 import *
-from  resources.lib.F4mProxy import f4mProxyHelper
-#from xbmcswift2 import xbmcplugin
+from resources.lib.F4mProxy import f4mProxyHelper
 import xbmcplugin
 
 # plugin constants
 __plugin__ = "plugin.video.vvvvid"
-__author__ = "evilsephiroth"
+__author__ = "evilsephiroth, cttynul"
 
 plugin = Plugin()
 handleAddon = int(sys.argv[1])
@@ -44,8 +42,8 @@ def show_main_channels():
         'label': ROOT_LABEL_SERIES,
         'path' : plugin.url_for('seriesChannels'),
         'is_playable': False
-    }];
-    return items;
+    }]
+    return items
 
 @plugin.route('/movie/channels',name="movieChannels")
 def showMovieChannels():
@@ -625,16 +623,10 @@ end series
 
 @plugin.route('/watch/<manifest>/<title>',name='playManifest')
 def playManifest(manifest,title):
-    print manifest
-    print manifest
-    print manifest
-    print manifest
-    print manifest
-    print manifest
-    print manifest
     player=f4mProxyHelper()
     player.playF4mLink(manifest,title)
     print
+
 
 if __name__ == '__main__':
     if not plugin.get_setting('username') or not plugin.get_setting('password'):
@@ -671,7 +663,7 @@ if __name__ == '__main__':
     
     handleAddon = int(sys.argv[1])
     xbmcplugin.setContent(handleAddon, 'files')
-    plugin.run()
+plugin.run()
 """"
 kwargs = {
             'label': label,
