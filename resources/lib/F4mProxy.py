@@ -445,7 +445,7 @@ class f4mProxyHelper():
             f4m_proxy=f4mProxy()
             stopPlaying.clear()
             runningthread=thread.start_new_thread(f4m_proxy.start,(stopPlaying,))
-            progress.create('F4M Proxt')
+            progress.create('F4M Proxy')
             stream_delay = 1
             progress.update( 20, "", 'Loading local proxy', "" )
             xbmc.sleep(stream_delay*1000)
