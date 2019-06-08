@@ -50,7 +50,6 @@ from crypto.cipher.aes_cbc import AES_CBC
 gproxy=None
 gauth=None
 nsplayer=False
-callbackDRM=None
 try:
     from Crypto.Cipher import AES
     USEDec=1 ## 1==crypto 2==local, local pycrypto
@@ -109,7 +108,6 @@ class HLSDownloaderRetry():
             gproxy=self.proxy
             self.use_proxy_for_chunks=use_proxy_for_chunks
             self.out_stream=out_stream
-            if g_stopEvent: g_stopEvent.clear()
             self.g_stopEvent=g_stopEvent
             self.maxbitrate=maxbitrate
             if '|' in url:
@@ -121,12 +119,16 @@ class HLSDownloaderRetry():
                 print 'header recieved now url and headers are',url, clientHeader 
             self.status='init done'
             self.url=url
-            return True# disabled downloadInternal(self.url,None,self.maxbitrate,self.g_stopEvent , self.callbackpath,  self.callbackparam, testing=True)
+            return self.preDownoload()
         except: 
             traceback.print_exc()
             self.status='finished'
         return False
         
+    def preDownoload(self):
+        
+        print 'code here'
+        return True
         
     def keep_sending_video(self,dest_stream, segmentToStart=None, totalSegmentToSend=0):
         try:
@@ -324,7 +326,6 @@ def handle_basic_m3u(url):
     global USEDec
     global gauth
     import urlparse
-    global callbackDRM
     
     seq = 1
     enc = None
@@ -333,7 +334,6 @@ def handle_basic_m3u(url):
     targetduration=5
     aesdone=False
     redirurl=url
-    vod=False
     for line in gen_m3u(url):
         if line.startswith('f4mredirect:'):
             redirurl=line.split('f4mredirect:')[1]
@@ -355,51 +355,23 @@ def handle_basic_m3u(url):
                 if attribs['METHOD'] == 'NONE':
                     assert 'URI' not in attribs, 'EXT-X-KEY: METHOD=NONE, but URI found'
                     assert 'IV' not in attribs, 'EXT-X-KEY: METHOD=NONE, but IV found'
-                    enc = Nonee
+                    enc = None
                 elif attribs['METHOD'] == 'AES-128':
                     if not aesdone:
-                        #aesdone=False there can be multple aes per file
+                        aesdone=False
                         assert 'URI' in attribs, 'EXT-X-KEY: METHOD=AES-128, but no URI found'
                         #from Crypto.Cipher import AES
                         codeurl=attribs['URI'].strip('"')
-                        
                         if gauth:
-                            currentaesUrl=codeurl
                             codeurl=gauth
-                            
-                            if codeurl.startswith("LSHex$"):
-                                codeurl=codeurl.split('LSHex$')[1].decode("hex")
-                                print 'code is ',codeurl.encode("hex")
-                            if codeurl.startswith("LSDRMCallBack$"):
-                                codeurlpath=codeurl.split('LSDRMCallBack$')[1]
-                                codeurl='LSDRMCallBack$'+currentaesUrl
-                                
-                                if codeurlpath and len(codeurlpath)>0 and callbackDRM==None:
-                                    print 'callback',codeurlpath
-                                    import importlib, os
-                                    foldername=os.path.sep.join(codeurlpath.split(os.path.sep)[:-1])
-                                    urlnew=''
-                                    if foldername not in sys.path:
-                                        sys.path.append(foldername)
-                                    try:
-                                        callbackfilename= codeurlpath.split(os.path.sep)[-1].split('.')[0]
-                                        callbackDRM = importlib.import_module(callbackfilename)
-                                        print 'LSDRMCallBack imported'
-                                    except:
-                                        traceback.print_exc()
-                            
-                        elif not codeurl.startswith('http'):
-                            import urlparse
-                            codeurl=urlparse.urljoin(url, codeurl)
-                                
                         
                         #key = download_file(codeurl)
                         
-                        elif not codeurl.startswith('http'):
+                        if not codeurl.startswith('http'):
                             import urlparse
                             codeurl=urlparse.urljoin(url, codeurl)
                             
-                        #assert len(key) == 16, 'EXT-X-KEY: downloaded key file has bad length'
+                        assert len(key) == 16, 'EXT-X-KEY: downloaded key file has bad length'
                         if 'IV' in attribs:
                             assert attribs['IV'].lower().startswith('0x'), 'EXT-X-KEY: IV attribute has bad format'
                             iv = attribs['IV'][2:].zfill(32).decode('hex')
@@ -426,10 +398,6 @@ def handle_basic_m3u(url):
             elif tag == '#EXT-X-ALLOW-CACHE':
                 # XXX deliberately ignore
                 pass
-            elif tag == 'EXT-X-PLAYLIST-TYPE:VOD':
-                vod=True
-                pass                
-                #EXT-X-PLAYLIST-TYPE:VOD
             elif tag == '#EXT-X-ENDLIST':
                 assert not attribs
                 yield None
@@ -448,7 +416,7 @@ def handle_basic_m3u(url):
         else:
             if not line.startswith('http'):
                 line=urlparse.urljoin(redirurl, line)
-            yield (seq, enc, duration, targetduration, line ,vod)
+            yield (seq, enc, duration, targetduration, line)
             seq += 1
 
 def player_pipe(queue, control,file):
@@ -462,16 +430,15 @@ def send_back(data,file):
     file.write(data)
     file.flush()
         
-def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",callbackparam="", testing=False):
+def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",callbackparam=""):
     global key
     global iv
     global USEDec
     global cookieJar
     global clientHeader
     global nsplayer
-    global callbackDRM
     if stopEvent and stopEvent.isSet():
-        return False
+        return
     dumpfile = None
     #dumpfile=open('c:\\temp\\myfile.mp4',"wb")
     variants = []
@@ -490,7 +457,7 @@ def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",call
             url=redirurl
         utltext=res.text
         res.close()
-        if testing: return True
+        
     except: traceback.print_exc()
     print 'redirurl',redirurl
     if 'EXT-X-STREAM-INF' in utltext:
@@ -553,33 +520,22 @@ def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",call
     nsplayer=False
     print 'inside HLS RETRY'
     try:
-
-        #file.write(b'FLV\x01')
-        #file.write(b'\x01')
-        #file.write(b'\x00\x00\x00\x09')
-        # FLV File body
-        #file.write(b'\x00\x00\x00\x09')
         while 1==1:#thread.isAlive():
             
             reconnect=False
-            vod=False
             if fails>maxfails: 
                 #stopEvent.set()
                 break
             if stopEvent and stopEvent.isSet():
-                return False
+                return
             try:
                 medialist = list(handle_basic_m3u(url))
-                if len(medialist)==0: raise Exception('empty m3u8')
-                print medialist
-                if testing: return True
             except Exception as inst:
                 print 'here in exp',inst
                 print fails
                 fails+=1
-                if testing and fails>6: return False
                 
-                if testing==False and '403' in repr(inst).lower() and callbackpath and len(callbackpath)>0:
+                if '403' in repr(inst).lower() and callbackpath and len(callbackpath)>0:
                     print 'callback'
                     import importlib, os
                     foldername=os.path.sep.join(callbackpath.split(os.path.sep)[:-1])
@@ -615,50 +571,21 @@ def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",call
                 #medialist = medialist[-6:]
             #print 'medialist',medialist
             addsomewait=False
-            lastKeyUrl=""
-            lastkey=None
             playedduration=0
             st=time.time()
             for media in medialist:
                  
                 if stopEvent and stopEvent.isSet():
-                    return False
+                    return
                 if media is None:
-                    #send_back('G'+chr(254)+chr(255)+('\0'*1), file)
                     #queue.put(None, block=True)
-                    
-                    
-                    if stopEvent:
-                        print 'set events'
-                        stopEvent.set()
-                    return False
-                seq, encobj, duration, targetduration, media_url,vod = media
+                    return
+                seq, encobj, duration, targetduration, media_url = media
                 
                 if seq > last_seq:
                     #print 'downloading.............',url
                     
                     enc=None
-                    if encobj:
-                        
-                        codeurl,iv=encobj
-                        if codeurl<>lastKeyUrl:
-                            if codeurl.startswith('http'):
-                                key = download_file(codeurl)
-                            elif codeurl.startswith('LSDRMCallBack$'):
-                                key=callbackDRM.DRMCallback(codeurl.split('LSDRMCallBack$')[1],url)
-                            else:
-                                key = codeurl
-                            codeurl=lastKeyUrl
-                        else:
-                            key=lastkey
-                        lastkey=key   
-                        if not USEDec==3:
-                            enc = AES.new(key, AES.MODE_CBC, iv)
-                        else:
-                            ivb=array.array('B',iv)
-                            keyb= array.array('B',key)
-                            enc=python_aes.new(keyb, 2, ivb)
-                        #enc=AESDecrypter.new(key, 2, iv)
                     try:
                         data=None
                         try:
@@ -666,15 +593,8 @@ def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",call
                             #for chunk in download_chunks(urlparse.urljoin(url, media_url)):
                             for chunk in download_chunks(media_url):
                                 if stopEvent and stopEvent.isSet():
-                                    return False
+                                    return
                                 print 'sending chunk', len(chunk)
-                                if enc: 
-                                 if not USEDec==3:
-                                    chunk = enc.decrypt(chunk)
-                                 else:
-                                    chunkb=array.array('B',chunk)
-                                    chunk = enc.decrypt(chunkb)
-                                    chunk="".join(map(chr, chunk))
                                 send_back(chunk,file)
                                 data="send"
                             playedduration+=duration
@@ -684,9 +604,9 @@ def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",call
                             print 'xxxx',repr(inst)
                             if 'forcibly closed' in repr(inst): 
                                 print 'returning'
-                                return False
+                                return
                         if stopEvent and stopEvent.isSet():
-                            return False
+                            return
 
                         if data and len(data)>0:# chunk in download_chunks(urlparse.urljoin(url, media_url),enc=encobj):
 
@@ -707,7 +627,6 @@ def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",call
                             break
                     except: pass
             
-            if vod: return True
             if playedSomething == 1:
                 # initial minimum reload delay
                 timetowait=int(targetduration - (time.time()-st))#
@@ -717,7 +636,7 @@ def downloadInternal(url,file,maxbitrate=0,stopEvent=None , callbackpath="",call
                         xbmc.sleep(1000)
                         print 'sleeep for 1sec',t
                         if stopEvent and stopEvent.isSet():
-                            return False
+                            return
             '''elif changed == 0:
                 # first attempt
                 time.sleep(targetduration*0.5)
